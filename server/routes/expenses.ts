@@ -42,7 +42,7 @@ export const expensesRoute = new Hono()
     const id = Number(c.req.param("id"));
     const item = expenses.find((e) => e.id === id);
     if (!item) return err(c, "Not found", 404);
-    return ok(c, { expenses: item }, 201);
+    return ok(c, { expenses: item });
   })
 
   // POST /api/expenses → create (validated)
@@ -83,7 +83,7 @@ export const expensesRoute = new Hono()
 
     const data = c.req.valid("json");
     if (Object.keys(data).length < 1)
-      return c.json({ error: "Empty body" }, 404);
+      return c.json({ error: "Empty body" }, 400);
 
     const current = expenses[idx];
     if (current === undefined) return err(c, "Not found", 404);
