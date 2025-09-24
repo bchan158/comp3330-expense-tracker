@@ -1,2 +1,0 @@
-- I learned that PUT method replaces all the contents of the data and PATCH method update the some of the contents of the data
--

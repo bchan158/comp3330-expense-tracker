@@ -1,3 +1,0 @@
-0e0473f Lab 3 - Full CRUD & Erro Handling Improvements
-4baf7d1 lab 2 - routes, middleware & validation
-3777f4a lab1: bun + hono minimal server with routes
