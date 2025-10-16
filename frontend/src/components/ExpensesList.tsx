@@ -1,31 +1,222 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+
+type Expense = {
+  id: number;
+  title: string;
+  amount: number;
+  fileUrl?: string | null;
+};
 
 export function ExpensesList() {
-  const { data, isLoading, isError, error } = useQuery({
+  const qc = useQueryClient();
+
+  const { data, isLoading, isError, error, refetch, isFetching } = useQuery({
     queryKey: ["expenses"],
     queryFn: async () => {
-      const res = await fetch("http://localhost:3000/api/expenses");
-      if (!res.ok) throw new Error("Failed to fetch");
-      return res.json() as Promise<{
-        expenses: { id: number; title: string; amount: number }[];
-      }>;
+      const res = await fetch("/api/expenses", {
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to fetch expenses");
+      return res.json() as Promise<{ expenses: Expense[] }>;
     },
   });
 
-  if (isLoading) return <p>Loading…</p>;
-  if (isError) return <p>Error: {(error as Error).message}</p>;
+  const deleteExpense = useMutation({
+    mutationFn: async (id: number) => {
+      const res = await fetch(`/api/expenses/${id}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to delete expense");
+      return id;
+    },
+    onMutate: async (id) => {
+      // Cancel outgoing refetches
+      await qc.cancelQueries({ queryKey: ["expenses"] });
+
+      // Snapshot the previous value
+      const previous = qc.getQueryData<{ expenses: Expense[] }>(["expenses"]);
+
+      // Optimistically update by removing the expense
+      if (previous) {
+        qc.setQueryData(["expenses"], {
+          expenses: previous.expenses.filter((item) => item.id !== id),
+        });
+      }
+
+      // Return context with the previous value
+      return { previous };
+    },
+    onError: (_err, _id, ctx) => {
+      // Rollback on error
+      if (ctx?.previous) {
+        qc.setQueryData(["expenses"], ctx.previous);
+      }
+    },
+    onSettled: () => {
+      // Always refetch after error or success
+      qc.invalidateQueries({ queryKey: ["expenses"] });
+    },
+  });
+
+  // Loading state with spinner
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center gap-2 p-8 text-sm text-gray-600">
+        <svg
+          className="h-5 w-5 animate-spin"
+          viewBox="0 0 24 24"
+          aria-hidden="true"
+        >
+          <circle
+            className="opacity-25"
+            cx="12"
+            cy="12"
+            r="10"
+            stroke="currentColor"
+            strokeWidth="4"
+            fill="none"
+          />
+          <path
+            className="opacity-75"
+            fill="currentColor"
+            d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"
+          />
+        </svg>
+        Loading expenses…
+      </div>
+    );
+  }
+
+  // Error state with retry button
+  if (isError) {
+    return (
+      <div className="rounded-lg border border-red-200 bg-red-50 p-4">
+        <p className="font-medium text-red-800">Could not load expenses</p>
+        <p className="mt-1 text-sm text-red-600">{(error as Error).message}</p>
+        <button
+          className="mt-3 rounded border border-red-300 bg-white px-3 py-1.5 text-sm text-red-700 hover:bg-red-50 transition"
+          onClick={() => refetch()}
+        >
+          Try Again
+        </button>
+      </div>
+    );
+  }
+
+  // Empty state
+  if (!data?.expenses || data.expenses.length === 0) {
+    return (
+      <div className="rounded-lg border border-gray-200 bg-gray-50 p-8 text-center">
+        <svg
+          className="mx-auto h-12 w-12 text-gray-400"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+          />
+        </svg>
+        <h3 className="mt-4 text-lg font-semibold text-gray-900">
+          No expenses yet
+        </h3>
+        <p className="mt-2 text-sm text-gray-600">
+          Start by adding your first expense using the form above.
+        </p>
+      </div>
+    );
+  }
 
   return (
-    <ul className="mt-4 space-y-2">
-      {data!.expenses.map((e) => (
-        <li
-          key={e.id}
-          className="flex justify-between rounded border p-2 bg-white"
+    <div className="space-y-4">
+      {/* Header with refresh button */}
+      <div className="flex items-center justify-between">
+        <h2 className="text-xl font-semibold">Your Expenses</h2>
+        <button
+          className="rounded border border-gray-300 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 transition disabled:cursor-not-allowed disabled:opacity-50"
+          onClick={() => refetch()}
+          disabled={isFetching}
         >
-          <span>{e.title}</span>
-          <span>${e.amount}</span>
-        </li>
-      ))}
-    </ul>
+          {isFetching ? (
+            <span className="flex items-center gap-1.5">
+              <svg className="h-3.5 w-3.5 animate-spin" viewBox="0 0 24 24">
+                <circle
+                  className="opacity-25"
+                  cx="12"
+                  cy="12"
+                  r="10"
+                  stroke="currentColor"
+                  strokeWidth="4"
+                  fill="none"
+                />
+                <path
+                  className="opacity-75"
+                  fill="currentColor"
+                  d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"
+                />
+              </svg>
+              Refreshing…
+            </span>
+          ) : (
+            "Refresh"
+          )}
+        </button>
+      </div>
+
+      {/* Expenses list */}
+      <ul className="space-y-2">
+        {data.expenses.map((expense) => (
+          <li
+            key={expense.id}
+            className="flex items-center justify-between rounded-lg border border-gray-200 bg-white p-4 shadow-sm hover:shadow-md transition"
+          >
+            <div className="flex flex-col">
+              <span className="font-medium text-gray-900">{expense.title}</span>
+              <span className="text-sm text-gray-600">
+                ${expense.amount.toFixed(2)}
+              </span>
+            </div>
+            <div className="flex items-center gap-3">
+              {expense.fileUrl && (
+                <a
+                  href={expense.fileUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-sm text-blue-600 underline hover:text-blue-800 transition"
+                >
+                  Download Receipt
+                </a>
+              )}
+              <button
+                type="button"
+                onClick={() => {
+                  if (confirm(`Delete "${expense.title}"?`)) {
+                    deleteExpense.mutate(expense.id);
+                  }
+                }}
+                disabled={deleteExpense.isPending}
+                className="text-sm text-red-600 underline hover:text-red-800 transition disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {deleteExpense.isPending ? "Deleting…" : "Delete"}
+              </button>
+            </div>
+          </li>
+        ))}
+      </ul>
+
+      {/* Delete error */}
+      {deleteExpense.isError && (
+        <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+          <p className="font-medium">Could not delete expense</p>
+          <p className="mt-1 text-red-600">
+            {deleteExpense.error?.message ?? "Please try again."}
+          </p>
+        </div>
+      )}
+    </div>
   );
 }
