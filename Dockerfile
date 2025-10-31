@@ -1,20 +1,22 @@
 # syntax=docker/dockerfile:1
+
 FROM oven/bun:1 as base
 WORKDIR /app
 
-# Install deps
+# Install server dependencies
 COPY package.json bun.lock ./
 RUN bun install --frozen-lockfile
 
-# Build frontend
+# ---- Build frontend ----
 COPY frontend ./frontend
+RUN cd frontend && bun install --frozen-lockfile
 RUN cd frontend && bun run build
 
-# Copy server and compiled frontend to ./server/public
+# ---- Copy server and compiled frontend ----
 COPY server ./server
 RUN mkdir -p server/public && cp -r frontend/dist/* server/public/
 
-# Start runtime image
+# ---- Runtime image ----
 FROM oven/bun:1 as runtime
 WORKDIR /app
 COPY --from=base /app /app
