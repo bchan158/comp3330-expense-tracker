@@ -25,5 +25,5 @@ COPY --from=base /app /app
 ENV NODE_ENV=production
 EXPOSE 3000
 
-# Start Bun + Hono server
+# ✅ Start Bun + Hono server
 CMD ["bun", "run", "server/index.ts"]
